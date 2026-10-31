@@ -1,5 +1,6 @@
 import {
   type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent,
   type ReactNode,
   useEffect,
@@ -19,6 +20,7 @@ import {
   formatTime,
   history,
   loadData,
+  moveChild,
   nextColor,
   removeChild,
   removeEntry,
@@ -46,6 +48,8 @@ export default function App() {
   const [page, setPage] = useState<string | null>(null);
   // The id of the row that shows the swipe actions.
   const [swiped, setSwiped] = useState<string | null>(null);
+  // True while the list shows drag handles to change the order of the children.
+  const [reorder, setReorder] = useState(false);
   const [theme, nextTheme] = useTheme();
 
   useEffect(() => saveData(data), [data]);
@@ -80,6 +84,20 @@ export default function App() {
           <header>
             <h1>Taschengeld</h1>
             <div className="header-buttons">
+              {data.children.length > 1 && (
+                <button
+                  className={reorder ? 'icon active' : 'icon'}
+                  onClick={() => {
+                    setSwiped(null);
+                    setReorder((r) => !r);
+                  }}
+                  aria-pressed={reorder}
+                  aria-label="Change order"
+                  title="Change order"
+                >
+                  <Icon name={reorder ? 'check' : 'sort'} />
+                </button>
+              )}
               {themeButton}
               <button
                 className="add"
@@ -101,54 +119,58 @@ export default function App() {
             </div>
           )}
 
-          <ul>
-            {data.children.map((child) => {
-              const cents = balance(data, child.id);
-              return (
-                <SwipeRow
-                  key={child.id}
-                  className="child"
-                  style={{ '--color': child.color } as CSSProperties}
-                  open={swiped === child.id}
-                  onOpen={() => setSwiped(child.id)}
-                  onClose={() => setSwiped(null)}
-                  onEdit={() => {
-                    setSwiped(null);
-                    setSheet({ kind: 'child', id: child.id });
-                  }}
-                  onDelete={() => {
-                    setSwiped(null);
-                    setData((d) => removeChild(d, child.id));
-                  }}
-                >
-                  <button
-                    className="info"
-                    onClick={() => setPage(child.id)}
-                    aria-label={`Show the history of ${child.name}`}
+          {reorder && data.children.length > 1 ? (
+            <ReorderList data={data} onMove={(from, to) => setData((d) => moveChild(d, from, to))} />
+          ) : (
+            <ul>
+              {data.children.map((child) => {
+                const cents = balance(data, child.id);
+                return (
+                  <SwipeRow
+                    key={child.id}
+                    className="child"
+                    style={{ '--color': child.color } as CSSProperties}
+                    open={swiped === child.id}
+                    onOpen={() => setSwiped(child.id)}
+                    onClose={() => setSwiped(null)}
+                    onEdit={() => {
+                      setSwiped(null);
+                      setSheet({ kind: 'child', id: child.id });
+                    }}
+                    onDelete={() => {
+                      setSwiped(null);
+                      setData((d) => removeChild(d, child.id));
+                    }}
                   >
-                    <span className="name">{child.name}</span>
-                    <span className={cents < 0 ? 'balance negative' : 'balance'}>{formatMoney(cents)}</span>
-                  </button>
-                  <div className="steps">
                     <button
-                      className="step"
-                      onClick={() => setSheet({ kind: 'entry', id: child.id, sign: -1 })}
-                      aria-label={`Subtract money from ${child.name}`}
+                      className="info"
+                      onClick={() => setPage(child.id)}
+                      aria-label={`Show the history of ${child.name}`}
                     >
-                      <Icon name="minus" size={24} />
+                      <span className="name">{child.name}</span>
+                      <span className={cents < 0 ? 'balance negative' : 'balance'}>{formatMoney(cents)}</span>
                     </button>
-                    <button
-                      className="step primary"
-                      onClick={() => setSheet({ kind: 'entry', id: child.id, sign: 1 })}
-                      aria-label={`Add money to ${child.name}`}
-                    >
-                      <Icon name="plus" size={24} />
-                    </button>
-                  </div>
-                </SwipeRow>
-              );
-            })}
-          </ul>
+                    <div className="steps">
+                      <button
+                        className="step"
+                        onClick={() => setSheet({ kind: 'entry', id: child.id, sign: -1 })}
+                        aria-label={`Subtract money from ${child.name}`}
+                      >
+                        <Icon name="minus" size={24} />
+                      </button>
+                      <button
+                        className="step primary"
+                        onClick={() => setSheet({ kind: 'entry', id: child.id, sign: 1 })}
+                        aria-label={`Add money to ${child.name}`}
+                      >
+                        <Icon name="plus" size={24} />
+                      </button>
+                    </div>
+                  </SwipeRow>
+                );
+              })}
+            </ul>
+          )}
         </>
       )}
 
@@ -188,6 +210,92 @@ export default function App() {
         />
       )}
     </main>
+  );
+}
+
+interface ReorderListProps {
+  data: Data;
+  onMove: (from: number, to: number) => void;
+}
+
+// The children with a drag handle on each row. Drag a handle up or down to move
+// the child. The arrow keys move the child of the focused handle.
+function ReorderList({ data, onMove }: ReorderListProps) {
+  const children = data.children;
+  // The dragged child, the pointer position at which its row is at rest, and
+  // the current pointer position.
+  const [drag, setDrag] = useState<{ id: string; origin: number; y: number } | null>(null);
+  const rows = useRef<HTMLUListElement>(null);
+
+  // The distance between the tops of two rows in pixels.
+  const step = () => {
+    const ul = rows.current;
+    const li = ul?.firstElementChild as HTMLElement | null;
+    if (!ul || !li) return 1;
+    return li.offsetHeight + parseFloat(getComputedStyle(ul).rowGap || '0');
+  };
+
+  const onPointerMove = (e: PointerEvent) => {
+    if (!drag) return;
+    const index = children.findIndex((c) => c.id === drag.id);
+    const s = step();
+    let origin = drag.origin;
+    let to = index;
+    while (e.clientY - origin > s / 2 && to < children.length - 1) {
+      origin += s;
+      to++;
+    }
+    while (e.clientY - origin < -s / 2 && to > 0) {
+      origin -= s;
+      to--;
+    }
+    if (to !== index) onMove(index, to);
+    setDrag({ id: drag.id, origin, y: e.clientY });
+  };
+
+  const onKeyDown = (e: ReactKeyboardEvent, index: number) => {
+    const to = e.key === 'ArrowUp' ? index - 1 : e.key === 'ArrowDown' ? index + 1 : -1;
+    if (to < 0 || to >= children.length) return;
+    e.preventDefault();
+    onMove(index, to);
+  };
+
+  const row = (child: Child, index: number) => {
+    const dragged = drag?.id === child.id;
+    const cents = balance(data, child.id);
+    const style = {
+      '--color': child.color,
+      transform: dragged ? `translateY(${drag.y - drag.origin}px)` : undefined,
+    } as CSSProperties;
+    return (
+      <li key={child.id} className={`child${dragged ? ' dragged' : ''}`} style={style}>
+        <span className="info">
+          <span className="name">{child.name}</span>
+          <span className={cents < 0 ? 'balance negative' : 'balance'}>{formatMoney(cents)}</span>
+        </span>
+        <button
+          className="handle"
+          aria-label={`Move ${child.name}`}
+          title="Drag to move"
+          onPointerDown={(e) => {
+            e.currentTarget.setPointerCapture(e.pointerId);
+            setDrag({ id: child.id, origin: e.clientY, y: e.clientY });
+          }}
+          onPointerMove={onPointerMove}
+          onPointerUp={() => setDrag(null)}
+          onPointerCancel={() => setDrag(null)}
+          onKeyDown={(e) => onKeyDown(e, index)}
+        >
+          <Icon name="grip" size={24} />
+        </button>
+      </li>
+    );
+  };
+
+  return (
+    <ul ref={rows} className="reorder">
+      {children.map(row)}
+    </ul>
   );
 }
 

@@ -86,6 +86,14 @@ export function removeChild(data: Data, id: string): Data {
   };
 }
 
+// Move the child at index `from` to index `to`.
+export function moveChild(data: Data, from: number, to: number): Data {
+  const children = [...data.children];
+  const [child] = children.splice(from, 1);
+  children.splice(to, 0, child);
+  return { ...data, children };
+}
+
 export function addEntry(data: Data, childId: string, cents: number, note: string): Data {
   if (cents === 0) return data;
   const entry = { id: crypto.randomUUID(), childId, cents, time: Date.now(), note };
