@@ -11,8 +11,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg', 'apple-touch-icon.png'],
       manifest: {
-        name: 'Taschengeld',
-        short_name: 'Taschengeld',
+        name: 'Pocket',
+        short_name: 'Pocket',
         description: 'Pocket money of children',
         start_url: '.',
         scope: '.',

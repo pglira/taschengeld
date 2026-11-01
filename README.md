@@ -1,4 +1,4 @@
-# Taschengeld
+# Pocket
 
 A Progressive Web App that manages the pocket money ("Taschengeld") of several children.
 

@@ -89,7 +89,7 @@ export default function App() {
       ) : (
         <>
           <header>
-            <h1>Taschengeld</h1>
+            <h1>Pocket</h1>
             <div className="header-buttons">
               {data.children.length > 1 && (
                 <button
