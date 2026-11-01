@@ -24,6 +24,10 @@ export interface Data {
 
 const STORAGE_KEY = 'taschengeld.v1';
 
+// True for the storage keys of the data, which a backup holds. The theme is
+// not part of the data.
+export const isDataKey = (key: string) => key === STORAGE_KEY;
+
 // Colors that the user can select for a child.
 export const COLORS = [
   '#43a047',

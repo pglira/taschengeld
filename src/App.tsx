@@ -19,6 +19,7 @@ import {
   formatMoney,
   formatTime,
   history,
+  isDataKey,
   loadData,
   moveChild,
   nextColor,
@@ -27,6 +28,7 @@ import {
   saveData,
   updateChild,
 } from './money';
+import { BackupSheet } from './BackupSheet';
 import { Icon, type IconName } from './icons';
 import { type Theme, useTheme } from './theme';
 
@@ -38,8 +40,12 @@ const THEME_LABELS: Record<Theme, string> = {
 };
 
 // The open sheet: a change of the money of a child with the initial sign
-// (1 adds, -1 subtracts), or a child form (id null for a new child).
-type Sheet = { kind: 'entry'; id: string; sign: 1 | -1 } | { kind: 'child'; id: string | null } | null;
+// (1 adds, -1 subtracts), a child form (id null for a new child) or the backup.
+type Sheet =
+  | { kind: 'entry'; id: string; sign: 1 | -1 }
+  | { kind: 'child'; id: string | null }
+  | { kind: 'backup' }
+  | null;
 
 export default function App() {
   const [data, setData] = useState<Data>(loadData);
@@ -55,7 +61,8 @@ export default function App() {
   useEffect(() => saveData(data), [data]);
 
   const close = () => setSheet(null);
-  const sheetChild = sheet ? data.children.find((c) => c.id === sheet.id) : undefined;
+  const sheetChild =
+    sheet && sheet.kind !== 'backup' ? data.children.find((c) => c.id === sheet.id) : undefined;
   const pageChild = data.children.find((c) => c.id === page);
   const total = data.children.reduce((sum, c) => sum + balance(data, c.id), 0);
 
@@ -99,6 +106,14 @@ export default function App() {
                 </button>
               )}
               {themeButton}
+              <button
+                className="icon"
+                onClick={() => setSheet({ kind: 'backup' })}
+                aria-label="Backup"
+                title="Backup"
+              >
+                <Icon name="backup" />
+              </button>
               <button
                 className="add"
                 onClick={() => setSheet({ kind: 'child', id: null })}
@@ -187,6 +202,8 @@ export default function App() {
           }}
         />
       )}
+
+      {sheet?.kind === 'backup' && <BackupSheet app="taschengeld" isKey={isDataKey} onClose={close} />}
 
       {sheet?.kind === 'child' && (
         <ChildForm
